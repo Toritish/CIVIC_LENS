@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const AIExplainer = ({ selectedCandidate, candidates }) => {
+// NEW: Added sandboxData to the props
+const AIExplainer = ({ selectedCandidate, candidates, sandboxData }) => {
   const [messages, setMessages] = useState([
     {
       role: 'bot',
       type: 'welcome',
-      content: 'Welcome to the Civic Lens AI Explainer. Please select a specific candidate from the global dropdown above to generate a bilingual financial dossier.'
+      content: 'Welcome to the Civic Lens AI Explainer. Please select a specific candidate from the dropdown above to generate a bilingual financial dossier.'
     }
   ]);
   const [isLoading, setIsLoading] = useState(false);
@@ -28,28 +29,76 @@ const AIExplainer = ({ selectedCandidate, candidates }) => {
     setMessages(prev => [...prev, { role: 'user', content: `Generate a financial dossier for ${candidateName}.` }]);
     setIsLoading(true);
 
-    // 2. Fetch the LLM response from our new backend route
-    fetch(`http://127.0.0.1:8000/api/ai-explainer/${selectedCandidate}`)
-      .then(res => {
-        if (!res.ok) throw new Error("Backend AI Engine failed to respond.");
-        return res.json();
-      })
-      .then(data => {
-        // 3. Add the structured AI response to chat history
+    // --- BRANCH 1: ISOLATED SANDBOX MODE ---
+    if (sandboxData && sandboxData.donations) {
+      
+      // A. Do the math directly in React
+      const candDonations = sandboxData.donations.filter(d => {
+        const safeName = (d.candidate_name || "").toLowerCase().replace(/ /g, "_").substring(0, 50);
+        return safeName === selectedCandidate;
+      });
+
+      let totalRaised = 0;
+      const donorMap = {};
+      
+      candDonations.forEach(d => {
+        const amount = Number(d.amount) || 0;
+        totalRaised += amount;
+        donorMap[d.donor_name || "Unknown Donor"] = (donorMap[d.donor_name || "Unknown Donor"] || 0) + amount;
+      });
+
+      let topDonor = "None";
+      let topDonorAmount = 0;
+      Object.entries(donorMap).forEach(([donor, amount]) => {
+        if (amount > topDonorAmount) {
+          topDonorAmount = amount;
+          topDonor = donor;
+        }
+      });
+
+      const topPct = totalRaised > 0 ? (topDonorAmount / totalRaised) * 100 : 0;
+
+      // B. Simulate the LLM Response so we don't have to rebuild the backend
+      setTimeout(() => {
         setMessages(prev => [...prev, {
           role: 'bot',
           type: 'analysis',
-          english: data.english,
-          swahili: data.swahili,
-          infographic: data.infographic
+          english: `${candidateName} has a highly concentrated funding network, with ${topPct.toFixed(1)}% of their total war chest originating from a single primary donor: ${topDonor}.`,
+          swahili: `${candidateName} ana mtandao wa kifedha uliokolea sana, huku asilimia ${topPct.toFixed(1)}% ya jumla ya fedha zake zikitoka kwa mfadhili mkuu mmoja: ${topDonor}.`,
+          infographic: [
+            `Total extracted war chest amounts to KSh ${totalRaised.toLocaleString()}`,
+            `Heavy reliance on ${topDonor}, contributing KSh ${topDonorAmount.toLocaleString()}`,
+            `Financial network indicates a ${topPct > 50 ? 'high' : 'moderate'} concentration risk based on current document context.`
+          ]
         }]);
-      })
-      .catch(err => {
-        setMessages(prev => [...prev, { role: 'bot', type: 'error', content: `System Error: ${err.message}` }]);
-      })
-      .finally(() => setIsLoading(false));
+        setIsLoading(false);
+      }, 1500); // Simulate AI thinking time
 
-  }, [selectedCandidate, candidates]);
+    } 
+    // --- BRANCH 2: GLOBAL DATABASE MODE ---
+    else {
+      // Fetch the actual LLM response from our backend route
+      fetch(`http://127.0.0.1:8000/api/ai-explainer/${selectedCandidate}`)
+        .then(res => {
+          if (!res.ok) throw new Error("Backend AI Engine failed to respond.");
+          return res.json();
+        })
+        .then(data => {
+          setMessages(prev => [...prev, {
+            role: 'bot',
+            type: 'analysis',
+            english: data.english,
+            swahili: data.swahili,
+            infographic: data.infographic
+          }]);
+        })
+        .catch(err => {
+          setMessages(prev => [...prev, { role: 'bot', type: 'error', content: `System Error: ${err.message}` }]);
+        })
+        .finally(() => setIsLoading(false));
+    }
+
+  }, [selectedCandidate, candidates, sandboxData]); // Added sandboxData to dependency array
 
   return (
     <div className="flex flex-col h-[500px] bg-slate-50 rounded-xl border border-slate-200 overflow-hidden font-sans">

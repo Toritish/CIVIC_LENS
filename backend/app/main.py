@@ -278,7 +278,7 @@ async def upload_financial_document(
             # Extract the list of donations
             donations_list = extracted_data.get("donations", [])
             
-            # --- FIX: Manually calculate the next donation_id to prevent UniqueViolation ---
+            #  FIX: Manually calculate the next donation_id to prevent UniqueViolation 
             last_donation = db.query(models.Donation).order_by(models.Donation.donation_id.desc()).first()
             current_max_id = last_donation.donation_id if last_donation else 0
 

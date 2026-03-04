@@ -3,35 +3,60 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 
-const FundingTrends = () => {
+// NEW: Accept the sandboxData prop
+const FundingTrends = ({ sandboxData }) => {
   const [chartData, setChartData] = useState([]);
 
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/api/network-metrics')
-      .then(res => res.json())
-      .then(data => {
-        // 1. Calculate total raised per candidate
-        const fundingMap = {};
-        data.links.forEach(link => {
-          const targetId = typeof link.target === 'object' ? link.target.id : link.target;
-          fundingMap[targetId] = (fundingMap[targetId] || 0) + link.amount;
-        });
+    // --- BRANCH 1: ISOLATED SANDBOX MODE ---
+    if (sandboxData && sandboxData.donations) {
+      const fundingMap = {};
+      
+      // Calculate totals directly from the uploaded JSON
+      sandboxData.donations.forEach(donation => {
+        const candidateName = donation.candidate_name || "Unknown Candidate";
+        const amount = Number(donation.amount) || 0;
+        fundingMap[candidateName] = (fundingMap[candidateName] || 0) + amount;
+      });
 
-        // 2. Match IDs to Candidate Names
-        const candidatesArr = Object.keys(fundingMap).map(id => {
-          const node = data.nodes.find(n => String(n.id) === String(id));
-          return {
-            name: node ? node.name : `Candidate ${id}`,
-            total: fundingMap[id]
-          };
-        });
+      // Format for the chart
+      const candidatesArr = Object.keys(fundingMap).map(name => ({
+        name: name,
+        total: fundingMap[name]
+      }));
 
-        // 3. Sort by highest funding and take top 10 to match your screenshot
-        const sorted = candidatesArr.sort((a, b) => b.total - a.total).slice(0, 10);
-        setChartData(sorted);
-      })
-      .catch(err => console.error("Funding Engine Error:", err));
-  }, []);
+      // Sort and set
+      const sorted = candidatesArr.sort((a, b) => b.total - a.total).slice(0, 10);
+      setChartData(sorted);
+    } 
+    // --- BRANCH 2: GLOBAL DATABASE MODE ---
+    else {
+      fetch('http://127.0.0.1:8000/api/network-metrics')
+        .then(res => res.json())
+        .then(data => {
+          // 1. Calculate total raised per candidate
+          const fundingMap = {};
+          data.links.forEach(link => {
+            const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+            fundingMap[targetId] = (fundingMap[targetId] || 0) + link.amount;
+          });
+
+          // 2. Match IDs to Candidate Names
+          const candidatesArr = Object.keys(fundingMap).map(id => {
+            const node = data.nodes.find(n => String(n.id) === String(id));
+            return {
+              name: node ? node.name : `Candidate ${id}`,
+              total: fundingMap[id]
+            };
+          });
+
+          // 3. Sort by highest funding and take top 10 to match your screenshot
+          const sorted = candidatesArr.sort((a, b) => b.total - a.total).slice(0, 10);
+          setChartData(sorted);
+        })
+        .catch(err => console.error("Funding Engine Error:", err));
+    }
+  }, [sandboxData]); // Re-run this effect if the sandbox data changes
 
   if (chartData.length === 0) {
     return <div className="p-10 text-center text-slate-400">Loading Campaign War Chests...</div>;

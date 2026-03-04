@@ -7,11 +7,13 @@ import FundingTrends from './components/FundingTrends';
 import AIExplainer from './components/AIExplainer';
 import DashboardHome from './components/DashboardHome';
 import DataIntake from './components/DataIntake';
+import LandingPage from './components/LandingPage';
 
-//  extract the Header into a component so we can use the location router hook
-const TopHeader = () => {
+// Extract the Header into a component so we can use the location router hook
+const TopHeader = ({ sandboxMode, clearSandbox }) => {
   const location = useLocation();
-  const isHome = location.pathname === '/';
+  const isLanding = location.pathname === '/';
+  const isHub = location.pathname === '/hub';
 
   return (
     <header className="border-b border-slate-200 bg-white p-6 shadow-sm sticky top-0 z-[2000]">
@@ -28,14 +30,27 @@ const TopHeader = () => {
         </div>
         <div className="flex items-center gap-4">
           {/* Show a Return button if we are inside a module */}
-          {!isHome && (
-            <Link to="/" className="text-sm font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 transition-colors">
+          {(!isLanding && !isHub) && (
+            <Link to="/hub" className="text-sm font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 transition-colors">
               ← Return to Hub
             </Link>
           )}
-          <div className="px-4 py-2 border border-blue-100 rounded-full bg-blue-50 text-[10px]">
-            <span className="text-blue-700 font-bold">SYSTEM STATUS:</span> <span className="text-blue-600">OPERATIONAL</span>
-          </div>
+          
+          {/* Dynamic Sandbox Indicator */}
+          {sandboxMode ? (
+            <div className="flex items-center gap-2">
+              <div className="px-4 py-2 border border-purple-200 rounded-full bg-purple-50 text-[10px] animate-pulse">
+                <span className="text-purple-700 font-bold">SYSTEM STATUS:</span> <span className="text-purple-600">ISOLATED SANDBOX</span>
+              </div>
+              <button onClick={clearSandbox} className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 text-[10px] font-bold rounded-full border border-red-200 transition-colors shadow-sm">
+                EXIT SANDBOX
+              </button>
+            </div>
+          ) : (
+            <div className="px-4 py-2 border border-blue-100 rounded-full bg-blue-50 text-[10px]">
+              <span className="text-blue-700 font-bold">SYSTEM STATUS:</span> <span className="text-blue-600">GLOBAL DATABASE</span>
+            </div>
+          )}
         </div>
       </div>
     </header>
@@ -44,25 +59,47 @@ const TopHeader = () => {
 
 function App() {
   const [selectedCandidate, setSelectedCandidate] = useState("all");
-  const [candidates, setCandidates] = useState([]);
+  const [globalCandidates, setGlobalCandidates] = useState([]);
+  
+  // THE NEW BRAIN: Short-Term Memory for the Isolated Sandbox
+  const [sandboxData, setSandboxData] = useState(null);
 
   useEffect(() => {
     fetch('http://127.0.0.1:8000/api/candidates')
       .then(res => res.json())
-      .then(data => setCandidates(data))
+      .then(data => setGlobalCandidates(data))
       .catch(err => console.error("Error fetching candidates:", err));
   }, []);
+
+  // SMART DROPDOWNS: Determines which candidates show in the dropdowns
+  const candidates = React.useMemo(() => {
+    if (sandboxData && sandboxData.donations) {
+      // If we are in Sandbox mode, ONLY show candidates from the uploaded document
+      const uniqueNames = [...new Set(sandboxData.donations.map(d => d.candidate_name))];
+      return uniqueNames.map(name => ({
+        candidate_id: name.toLowerCase().replace(/ /g, "_").substring(0, 50),
+        name: name,
+        full_name: name
+      }));
+    }
+    // Otherwise, show everyone from PostgreSQL
+    return globalCandidates;
+  }, [sandboxData, globalCandidates]);
 
   return (
     <Router>
       <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-blue-100">
         
-        <TopHeader />
+        {/* Pass Sandbox status up to the Header */}
+        <TopHeader sandboxMode={!!sandboxData} clearSandbox={() => setSandboxData(null)} />
 
         <main className="max-w-7xl mx-auto p-8 space-y-16">
           <Routes>
-            {/* The 5-Card Home Grid */}
-            <Route path="/" element={<DashboardHome />} />
+            {/* The Grand Entrance Landing Page */}
+            <Route path="/" element={<LandingPage />} />
+
+            {/* The 5-Card Hub (Global Database Mode) */}
+            <Route path="/hub" element={<DashboardHome />} />
 
             {/* Module 1:  */}
             <Route path="/module-1" element={
@@ -72,7 +109,8 @@ function App() {
                   <p className="text-slate-500 text-sm italic">Top war chests calculated from network donation data.</p>
                 </div>
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-8">
-                  <FundingTrends />
+                  {/* Passing sandboxData down */}
+                  <FundingTrends sandboxData={sandboxData} />
                 </div>
               </section>
             } />
@@ -115,7 +153,8 @@ function App() {
                   </div>
 
                   <div className="md:col-span-3 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden relative">
-                    <NetworkGraph targetCandidateId={selectedCandidate} />
+                    {/* Passing sandboxData down */}
+                    <NetworkGraph targetCandidateId={selectedCandidate} sandboxData={sandboxData} />
                   </div>
                 </div>
               </section>
@@ -128,7 +167,8 @@ function App() {
                   <h2 className="text-2xl font-bold text-slate-800">Module 3: Geographic Influence Engine</h2>
                 </div>
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                  <MapVisualization />
+                  {/* Passing sandboxData down */}
+                  <MapVisualization sandboxData={sandboxData} />
                 </div>
               </section>
             } />
@@ -146,7 +186,7 @@ function App() {
               </section>
             } />
 
-            {/* Module 5: e Candidate Dropdown so the AI knows who to analyze! */}
+            {/* Module 5: Candidate Dropdown so the AI knows who to analyze! */}
             <Route path="/module-5" element={
               <section className="space-y-6">
                 <div className="border-l-4 border-blue-600 pl-4 flex justify-between items-center">
@@ -171,7 +211,8 @@ function App() {
                 </div>
 
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden p-6">
-                  <AIExplainer selectedCandidate={selectedCandidate} candidates={candidates} />
+                  {/* Passing sandboxData down */}
+                  <AIExplainer selectedCandidate={selectedCandidate} candidates={candidates} sandboxData={sandboxData} />
                 </div>
               </section>
             } />
@@ -179,7 +220,8 @@ function App() {
             {/* New Module: Data Intake Pipeline */}
             <Route path="/data-intake" element={
               <div className="bg-slate-50 border border-slate-200 rounded-xl shadow-sm p-2">
-                <DataIntake />
+                {/* Giving DataIntake the ability to save to the sandbox! */}
+                <DataIntake setSandboxData={setSandboxData} />
               </div>
             } />
 

@@ -11,10 +11,12 @@ L.Icon.Default.mergeOptions({
     shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-const MapVisualization = () => {
+// NEW: Accept sandboxData as a prop
+const MapVisualization = ({ sandboxData }) => {
     const [geoData, setGeoData] = useState(null);
 
     useEffect(() => {
+        // We always fetch from the backend to get the actual GeoJSON map shapes
         fetch('http://127.0.0.1:8000/api/geographic-influence')
             .then(res => {
                 if (!res.ok) throw new Error("Backend not responding correctly");
@@ -22,11 +24,63 @@ const MapVisualization = () => {
             })
             .then(data => {
                 if (data && data.features) {
-                    setGeoData(data);
+                    
+                    // --- BRANCH 1: ISOLATED SANDBOX MODE ---
+                    if (sandboxData && sandboxData.donations) {
+                        let totalSandboxFunds = 0;
+                        const countyFunds = {};
+
+                        // 1. Calculate sandbox totals and intelligently guess the county
+                        sandboxData.donations.forEach(don => {
+                            const amount = Number(don.amount) || 0;
+                            totalSandboxFunds += amount;
+
+                            // Smart string matching to place raw text onto the map
+                            const textToSearch = `${don.donor_name} ${don.candidate_name}`.toLowerCase();
+                            let matchedCounty = "unknown";
+
+                            data.features.forEach(f => {
+                                const cName = (f.properties.COUNTY_NAM || f.properties.COUNTY || "").toLowerCase();
+                                if (cName && textToSearch.includes(cName)) {
+                                    matchedCounty = cName;
+                                }
+                            });
+
+                            // Fallback for the demo file ("Coastal Merchants" maps to Mombasa)
+                            if (textToSearch.includes('coastal') || textToSearch.includes('coast')) {
+                                matchedCounty = "mombasa";
+                            }
+
+                            countyFunds[matchedCounty] = (countyFunds[matchedCounty] || 0) + amount;
+                        });
+
+                        // 2. Override the map features with our isolated Sandbox data
+                        data.features = data.features.map(feature => {
+                            const cName = (feature.properties.COUNTY_NAM || feature.properties.COUNTY || "").toLowerCase();
+                            const amountRaised = countyFunds[cName] || 0;
+                            const fci = totalSandboxFunds > 0 ? (amountRaised / totalSandboxFunds) * 100 : 0;
+
+                            return {
+                                ...feature,
+                                properties: {
+                                    ...feature.properties,
+                                    total_raised: amountRaised,
+                                    fci_score: parseFloat(fci.toFixed(2))
+                                }
+                            };
+                        });
+
+                        setGeoData(data);
+                    } 
+                    // --- BRANCH 2: GLOBAL DATABASE MODE ---
+                    else {
+                        // Just load the normal PostgreSQL data sent by the backend
+                        setGeoData(data);
+                    }
                 }
             })
             .catch(err => console.error("Map Engine Error:", err));
-    }, []);
+    }, [sandboxData]); // Re-run whenever the user enters or exits the Sandbox!
 
     // Light Theme Colors
     const getStyle = (feature) => {

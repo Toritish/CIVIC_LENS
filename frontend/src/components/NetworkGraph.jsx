@@ -1,15 +1,57 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 
-const NetworkGraph = ({ targetCandidateId }) => {
+// NEW: Accept the sandboxData prop
+const NetworkGraph = ({ targetCandidateId, sandboxData }) => {
   const [rawData, setRawData] = useState({ nodes: [], links: [] });
 
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/api/network-metrics')
-      .then(res => res.json())
-      .then(json => setRawData(json))
-      .catch(err => console.error("Network Engine Error:", err));
-  }, []);
+    // --- BRANCH 1: ISOLATED SANDBOX MODE ---
+    if (sandboxData && sandboxData.donations) {
+      const nodesMap = new Map();
+      const linksList = [];
+
+      sandboxData.donations.forEach(don => {
+        const cName = don.candidate_name || "Unknown Candidate";
+        const dName = don.donor_name || "Unknown Donor";
+        
+        // Generate safe IDs matching our backend logic
+        const cId = cName.toLowerCase().replace(/ /g, "_").substring(0, 50);
+        const dId = dName.toLowerCase().replace(/ /g, "_").substring(0, 50);
+        const amount = Number(don.amount) || 0;
+
+        // 1. Create Nodes if they don't exist
+        if (!nodesMap.has(cId)) {
+          nodesMap.set(cId, { id: cId, name: cName, group: "Candidate", centrality_score: 0 });
+        }
+        if (!nodesMap.has(dId)) {
+          nodesMap.set(dId, { id: dId, name: dName, group: "Donor", centrality_score: 0 });
+        }
+
+        // Add a simple centrality weight so the label math (toFixed) doesn't break
+        nodesMap.get(cId).centrality_score += 0.1;
+        nodesMap.get(dId).centrality_score += 0.05;
+
+        // 2. Create or aggregate Links
+        const existingLink = linksList.find(l => l.source === dId && l.target === cId);
+        if (existingLink) {
+          existingLink.amount += amount;
+        } else {
+          linksList.push({ source: dId, target: cId, amount: amount });
+        }
+      });
+
+      // Update the graph instantly with our localized data!
+      setRawData({ nodes: Array.from(nodesMap.values()), links: linksList });
+    } 
+    // --- BRANCH 2: GLOBAL DATABASE MODE ---
+    else {
+      fetch('http://127.0.0.1:8000/api/network-metrics')
+        .then(res => res.json())
+        .then(json => setRawData(json))
+        .catch(err => console.error("Network Engine Error:", err));
+    }
+  }, [sandboxData]); // Re-run whenever sandbox data changes
 
   const graphData = useMemo(() => {
     if (targetCandidateId === "all") return rawData;
