@@ -65,6 +65,13 @@ function App() {
   // THE NEW BRAIN: Short-Term Memory for the Isolated Sandbox
   const [sandboxData, setSandboxData] = useState(null);
 
+  // Debug: Log when sandboxData changes
+  useEffect(() => {
+    if (sandboxData) {
+      console.log("App.jsx: sandboxData updated with", sandboxData.donations?.length || 0, "donations");
+    }
+  }, [sandboxData]);
+
   useEffect(() => {
     fetch('http://127.0.0.1:8000/api/candidates')
       .then(res => res.json())
@@ -181,7 +188,8 @@ function App() {
                   <h2 className="text-2xl font-bold text-slate-800">Module 4: Policy Simulator</h2>
                   <p className="text-slate-500 text-sm italic">Test hypothetical regulations and observe their impact on the power map.</p>
                 </div>
-                <PolicySimulator />
+                {/* Passing sandboxData down */}
+                <PolicySimulator sandboxData={sandboxData} />
               </section>
             } />
 
