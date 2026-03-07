@@ -36,15 +36,20 @@ const DataIntake = ({ setSandboxData }) => {
       }
 
       const data = await response.json();
+      console.log("DataIntake: Raw response from backend:", data);
+      console.log("DataIntake: extracted_data:", data.extracted_data);
+      
       setAiResult(data.extracted_data);
       
       // NEW THE MAGIC STEP: Push the AI data directly into the App's Sandbox memory!
       if (setSandboxData) {
+        console.log("DataIntake: Setting sandbox data with", data.extracted_data.donations?.length || 0, "donations");
         setSandboxData(data.extracted_data);
       }
 
     } catch (err) {
       setError(err.message);
+      console.error("DataIntake Error:", err);
     } finally {
       setIsLoading(false);
     }
