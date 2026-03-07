@@ -461,21 +461,32 @@ async def upload_financial_document(
         document_text = contents.decode("utf-8")
         
         # 2. Set up the LLM to act as a Data Engineer
-        llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
+        llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
         
         extraction_prompt = PromptTemplate(
             input_variables=["text"],
             template="""
             You are an expert financial data extraction AI. 
-            Read the following raw text and extract all political campaign donations.
+            Read the following raw text and extract ALL political campaign donations mentioned.
             
-            Return the data STRICTLY as a valid JSON object with a single key "donations" 
-            containing a list of objects. Each object must have:
-            - "donor_name" (string)
-            - "candidate_name" (string)
-            - "amount" (integer, remove currency symbols and commas)
+            Look for patterns like:
+            - "X transferred/donated/gave [amount] to [candidate]"
+            - "[Donor/Organization] gave/sent [amount] to [candidate]"
+            - "Cash deposit of [amount] from [Donor] for [candidate]"
+            - Any mention of funds, contributions, or transfers between entities and politicians
             
-            Do not include any markdown formatting, backticks, or other text. Just the JSON.
+            For amounts:
+            - Remove all currency symbols (Ksh, $, etc.) and commas
+            - Convert "1,500,000" to 1500000
+            - Convert "Ksh 2,400,000" to 2400000
+            
+            Return ONLY a valid JSON object (no markdown, no backticks). Format:
+            {{"donations": [
+                {{"donor_name": "Organization/Person Name", "candidate_name": "Politician Name", "amount": 1500000}},
+                {{"donor_name": "...", "candidate_name": "...", "amount": ...}}
+            ]}}
+            
+            Be thorough - find every donation mentioned, even if they're embedded in prose.
             
             RAW TEXT:
             {text}
